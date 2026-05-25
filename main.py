@@ -1,7 +1,12 @@
+# python 3.14.3
+
 import socket
 import struct
 import os
 from threading import Thread
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 
 
 def get_stun_external_address(sock: socket.socket, stun_server="stun.l.google.com", stun_port=19302, timeout=5) -> tuple[str, int]:
@@ -166,7 +171,7 @@ if __name__ == "__main__":
 			try:
 				data, oa = sock.recvfrom(1024)
 				message = data.decode('UTF-8')
-				print(f'{oa}: {message}')
+				print(f'{to_hex(tuple(oa))}: {message}')
 			except socket.timeout:
 				pass
 			except Exception as e:
@@ -174,11 +179,17 @@ if __name__ == "__main__":
 				running = False
 
 	Thread(target=recv_message, daemon=True).start()
+	session = PromptSession()
 	while running:
 		try:
-			message = input()
-		except:  # noqa: E722
+			with patch_stdout():
+				message = session.prompt("Вы > ")
+		except KeyboardInterrupt:
 			exit(0)
+		except Exception as e:
+				print(f"❌ Ошибка: {e}")
+				running = False
+				continue
 
 		if len(message) > 512:
 			print("❌ Ошибка: Слишком длинное сообщение")
