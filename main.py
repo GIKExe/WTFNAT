@@ -3,7 +3,6 @@
 import socket
 import struct
 import os
-from time import sleep
 from threading import Thread
 
 from prompt_toolkit import PromptSession
@@ -95,24 +94,22 @@ def get_my_code(stuns: list[tuple[str, int]]) -> str:
 	port: int | None = None
 
 	for sh, sp in stuns:
-		for _ in range(5):
-			ip, ext_port = get_stun_external_address(sock, sh, sp, 1)
-			if host is None:
-				host = ip
-			elif ip != host:
-				raise Exception('Айпи поменялся во промя тестирования')
+		ip, ext_port = get_stun_external_address(sock, sh, sp)
+		if host is None:
+			host = ip
+		elif ip != host:
+			raise Exception('Айпи поменялся во промя тестирования')
 		
-			if port is None:
-				port = ext_port
-			elif ext_port != port:
-				raise Exception('Порт поменялся во время тестирования')
+		if port is None:
+			port = ext_port
+		elif ext_port != port:
+			raise Exception('Порт поменялся во время тестирования')
 
 	if host is None:
 		raise Exception('Хост не получен')
 	if port is None:
 		raise Exception('Порт не получен')
 
-	sock.settimeout(None)
 	return to_hex((host, port))
 
 
@@ -173,9 +170,6 @@ if __name__ == "__main__":
 		while running:
 			try:
 				data, oa = sock.recvfrom(1024)
-				if data[0] != 0x02:
-					continue
-				data = data[1:]
 				message = data.decode('UTF-8')
 				print(f'{to_hex(tuple(oa))}: {message}')
 			except socket.timeout:
@@ -184,18 +178,7 @@ if __name__ == "__main__":
 				print(f"❌ Ошибка: {e}")
 				running = False
 
-	def send_ping():
-		global running
-		sleep(1)
-		while running:
-			try:
-				sock.sendto(b'\x01', addr)
-			except:
-				pass
-			sleep(5)
-
 	Thread(target=recv_message, daemon=True).start()
-	Thread(target=send_ping,    daemon=True).start()
 	session = PromptSession()
 	while running:
 		try:
@@ -208,16 +191,16 @@ if __name__ == "__main__":
 				running = False
 				continue
 
+		if len(message) > 512:
+			print("❌ Ошибка: Слишком длинное сообщение")
+			continue
+
 		if (message == 'exit') or (message == 'выход'):
 			running = False
 			continue
 
 		try:
-			data = b'\x02' + message.encode('UTF-8')
-			if len(data) > 1024:
-				print("❌ Ошибка: Слишком длинное сообщение")
-				continue
-			sock.sendto(data, addr)
+			sock.sendto(message.encode('UTF-8'), addr)
 		except Exception as e:
 			print(f"❌ Ошибка: {e}")
 			running = False
