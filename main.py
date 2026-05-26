@@ -22,9 +22,13 @@ def get_stun_external_address(sock: socket.socket, stun_server="stun.l.google.co
 	request = struct.pack('!HHI12s', 0x0001, 0, 0x2112A442, tid)
 
 	sock.settimeout(timeout)
-	sock.sendto(request, (stun_server, stun_port))
-	response, _ = sock.recvfrom(1024)
-
+	try:
+		sock.sendto(request, (stun_server, stun_port))
+		response, _ = sock.recvfrom(1024)
+	except:
+		print(stun_server, stun_port)
+		raise
+	
 	if len(response) < 20:
 		raise RuntimeError("Слишком короткий ответ от STUN-сервера")
 
@@ -141,6 +145,7 @@ def from_hex(addr: str) -> tuple[str, int]:
 if __name__ == "__main__":
 	stuns = [
 		("stun.sipnet.ru",  3478),
+		("stun.zadarma.com", 3478),
 	]
 
 	sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -154,10 +159,13 @@ if __name__ == "__main__":
 		print(f"❌ Ошибка: {e}")
 		exit(0)
 
+	users: list[tuple[str, int]] = []
+
 	while True:
 		try:
 			code = input('Введите код подключения >')
 			addr = from_hex(code)
+			users.append(addr)
 			break
 		except KeyboardInterrupt:
 			exit(0)
@@ -170,8 +178,19 @@ if __name__ == "__main__":
 		while running:
 			try:
 				data, oa = sock.recvfrom(1024)
+				other_addr = (str(oa[0]), int(oa[1]), )
+				if other_addr not in users:
+					users.append(other_addr)
+				rele = f'{to_hex(other_addr)}: '.encode('UTF-8') + data
 				message = data.decode('UTF-8')
 				print(f'{to_hex(tuple(oa))}: {message}')
+				for user in users:
+					if user == other_addr:
+						continue
+					try:
+						sock.sendto(rele, user)
+					except:
+						pass 
 			except socket.timeout:
 				pass
 			except Exception as e:
@@ -183,7 +202,7 @@ if __name__ == "__main__":
 	while running:
 		try:
 			with patch_stdout():
-				message = session.prompt("Вы > ")
+				message: str = session.prompt("Вы > ")
 		except KeyboardInterrupt:
 			exit(0)
 		except Exception as e:
@@ -191,16 +210,18 @@ if __name__ == "__main__":
 				running = False
 				continue
 
-		if len(message) > 512:
-			print("❌ Ошибка: Слишком длинное сообщение")
-			continue
-
 		if (message == 'exit') or (message == 'выход'):
 			running = False
 			continue
 
+		data = message.encode('UTF-8', errors='ignore')
+		if len(data) > 1024:
+			print("❌ Ошибка: Слишком длинное сообщение")
+			continue
+
 		try:
-			sock.sendto(message.encode('UTF-8'), addr)
+			for user in users:
+				sock.sendto(data, user)
 		except Exception as e:
 			print(f"❌ Ошибка: {e}")
 			running = False
